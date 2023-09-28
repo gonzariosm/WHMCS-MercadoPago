@@ -11,16 +11,15 @@ Gateway de pago de WHMCS para utilizar con Mercado Pago
 ![GitHub stars](https://img.shields.io/github/stars/fedealvz/WHMCS-MercadoPago?style=social)
 ![GitHub watchers](https://img.shields.io/github/watchers/fedealvz/WHMCS-MercadoPago?style=social)
 
-
 ## Features
 
-- Soporta múltiples cuentas de Mercado Pago y de diferentes países
-- Cada cuenta se configura por separado en el apartado de gateways / pasarelas de pago de WHMCS
-- Multi-moneda
-- Multi-idioma
-- Posibilidad de seleccionar los medios de pago admitidos en Mercado Pago
-- Callback (IPN)
-- Compatible con WHMCS 7 y 8
+-   Soporta múltiples cuentas de Mercado Pago y de diferentes países
+-   Cada cuenta se configura por separado en el apartado de gateways / pasarelas de pago de WHMCS
+-   Multi-moneda
+-   Multi-idioma
+-   Posibilidad de seleccionar los medios de pago admitidos en Mercado Pago
+-   Callback (IPN)
+-   Compatible con WHMCS 7 y 8
 
 ## Disclaimer
 
@@ -36,6 +35,10 @@ Este módulo no pertenece a Mercado Pago. Mercado Pago no recomienda, refiere, c
 
 En caso de bugs, mejoras o cualquier duda, por favor utilizar Issues o Pull Requests del repositorio original de Github.
 Se puede forkear y editar sin ninguna restricción.
+
+## Información importante
+
+Para entender el funcionamiento de esta aplicacion, se recomienda leer la documentación oficial de [WHMCS Payment Gateways](https://developers.whmcs.com/payment-gateways/), tambien se puede ver que se ha preferido el usu de [localAPI](https://developers.whmcs.com/api/internal-api/) por sobre los metodos `checkCbInvoiceID`, `checkCbTransID`, `logTransaction` y `addInvoicePayment`.
 
 ## Instalación
 

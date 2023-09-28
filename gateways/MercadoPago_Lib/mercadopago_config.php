@@ -515,7 +515,13 @@ class MercadopagoConfig
                             }
                         }
                         $command   = 'AddTransaction';
-                        $postData  = ['paymentmethod' => $GATEWAY['paymentmethod'], 'invoiceid' => $nrofactura, 'transid' => $mp_transaccion, 'amountin' => $importe_pagado, 'fees' => $comision];
+                        $postData  = [
+                            'paymentmethod' => $GATEWAY['paymentmethod'],
+                            'invoiceid'     => $nrofactura,
+                            'transid'       => $mp_transaccion,
+                            'amountin'      => $importe_pagado,
+                            'fees'          => $comision
+                        ];
                         $results   = localAPI($command, $postData, $adminUsername);
                         $texto_log = "\r\n                    " . traduccion($idioma, 'mpconfig_56') . ': ' . $nrofactura . "\r\n                    " . traduccion($idioma, 'mpconfig_57') . ': ' . $GATEWAY['name'] . "\r\n                    " . traduccion($idioma, 'mpconfig_58') . ': ' . $mp_transaccion . "\r\n                    " . traduccion($idioma, 'mpconfig_60') . ': ' . $datosdelpago['authorization_code'] . "\r\n                    " . traduccion($idioma, 'mpconfig_61') . ': ' . $datosdelpago['date_approved'] . "\r\n                    " . traduccion($idioma, 'mpconfig_62') . ': ' . $datosdelpago['payment_type_id'] . ' - ' . $datosdelpago['payment_method_id'] . "\r\n                    " . traduccion($idioma, 'mpconfig_63') . ': ' . $datosdelpago['currency_id'] . "\r\n                    " . traduccion($idioma, 'mpconfig_64') . ': ' . $datosdelpago['transaction_details']['total_paid_amount'] . "\r\n                    " . traduccion($idioma, 'mpconfig_65') . ': ' . $datosdelpago['transaction_details']['net_received_amount'] . "\r\n                    " . $conversionlog;
                         logTransaction($GATEWAY['name'], $texto_log, traduccion($idioma, 'mpconfig_66') . ' [' . $nrofactura . ']');
@@ -525,11 +531,21 @@ class MercadopagoConfig
                 } else {
                     if ($status == 'pending') {
                         $command   = 'UpdateInvoice';
-                        $postData  = ['invoiceid' => $datosdelpago['external_reference'], 'notes' => date('Y-m-d H:i:s') . ': ' . traduccion($idioma, 'mpconfig_76') . "\r\n                        [" . ucwords($datosdelpago['payment_type_id']) . ' - ' . ucwords($datosdelpago['payment_method_id']) . ']'];
+                        $postData  = [
+                            'invoiceid' => $datosdelpago['external_reference'],
+                            'notes'     => date('Y-m-d H:i:s') . ': ' . traduccion($idioma, 'mpconfig_76') . "\r\n                        [" . ucwords($datosdelpago['payment_type_id']) . ' - ' . ucwords($datosdelpago['payment_method_id']) . ']'
+                        ];
                         $results   = localAPI($command, $postData, $adminUsername);
                         $texto_log = "\r\n                    " . traduccion($idioma, 'mpconfig_56') . ': ' . $datosdelpago['external_reference'] . "\r\n                    " . traduccion($idioma, 'mpconfig_57') . ': ' . $GATEWAY['name'] . "\r\n                    " . traduccion($idioma, 'mpconfig_58') . ': ' . $mp_transaccion . "\r\n                    " . traduccion($idioma, 'mpconfig_62') . ': ' . $datosdelpago['payment_type_id'] . ' - ' . $datosdelpago['payment_method_id'];
                         logTransaction($GATEWAY['name'], $texto_log, traduccion($idioma, 'mpconfig_76') . ' [' . $datosdelpago['external_reference'] . ']');
-                        Capsule::table('tbltransaction_history')->insert(['invoice_id' => $datosdelpago['external_reference'], 'gateway' => $GATEWAY['name'], 'updated_at' => date('Y-m-d H:i:s'), 'transaction_id' => $mp_transaccion, 'remote_status' => traduccion($idioma, 'mpconfig_76'), 'description' => $datosdelpago['payment_type_id'] . ' - ' . $datosdelpago['payment_method_id']]);
+                        Capsule::table('tbltransaction_history')->insert([
+                            'invoice_id'     => $datosdelpago['external_reference'],
+                            'gateway'        => $GATEWAY['name'],
+                            'updated_at'     => date('Y-m-d H:i:s'),
+                            'transaction_id' => $mp_transaccion,
+                            'remote_status'  => traduccion($idioma, 'mpconfig_76'),
+                            'description'    => $datosdelpago['payment_type_id'] . ' - ' . $datosdelpago['payment_method_id']
+                        ]);
                     }
                     $resultado = Capsule::table('bapp_mercadopago')->where('id', '=', $mp_id)->delete();
                 }
