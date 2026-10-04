@@ -25,6 +25,8 @@ and for reliability. Addon version: `17.3-silverhost.1`.
   `redondeado` modes) and the paid amount is within one unit of the invoice balance, the exact balance is
   recorded so the invoice is marked Paid without a residual balance or credit. Larger differences are
   recorded as actually paid (previously `truncado` / `redondeado` accepted any underpayment).
+  Every adjustment is written to the gateway log as `Rounding adjustment [<invoice>]` with the amount
+  charged in MercadoPago, the amount recorded in WHMCS and the difference, for reconciliation.
 - **`redondeado` mode** uses standard rounding instead of a `0.49` threshold.
 - **Error handling:** if MercadoPago does not return an `init_point`, the error is written to the
   gateway log and the client sees a message instead of a dead payment button.

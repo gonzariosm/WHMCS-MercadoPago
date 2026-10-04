@@ -44,5 +44,10 @@ check("truncado mode records an underpayment as paid", 400.0, MercadopagoConfig:
 check("redondeado mode settles a sub-unit difference", 651.5, MercadopagoConfig::getAmountToRecord(652, "651.50", "USD", "redondeado"));
 check("noverifica mode always records the balance", 485.58, MercadopagoConfig::getAmountToRecord(10, "485.58", "USD", "noverifica"));
 
+// Rounding adjustment log.
+check("rounded-up payment logs a negative adjustment", array("invoiceid" => 9116, "transaction" => "123", "charged_in_mercadopago" => 27297.0, "recorded_in_whmcs" => 27296.67, "adjustment" => -0.33), MercadopagoConfig::getAdjustmentLog(9116, "123", 27297, 27296.67));
+check("rounded-down payment logs a positive adjustment", 0.16, MercadopagoConfig::getAdjustmentLog(1, "1", 5454, 5454.16)["adjustment"]);
+check("exact payment logs no adjustment", null, MercadopagoConfig::getAdjustmentLog(1, "1", 58310, "58310.00"));
+
 echo $failures === 0 ? "\nAll tests passed\n" : "\n" . $failures . " test(s) failed\n";
 exit($failures === 0 ? 0 : 1);

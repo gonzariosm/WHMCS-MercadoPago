@@ -50,6 +50,16 @@ class MercadopagoConfig
         }
         return $paidAmount;
     }
+    // Gateway log entry describing the difference between the amount charged by MercadoPago and the
+    // amount recorded in WHMCS, or null when they match.
+    static function getAdjustmentLog($invoiceId, $transactionId, $chargedAmount, $recordedAmount)
+    {
+        $adjustment = round((float) $recordedAmount - (float) $chargedAmount, 2);
+        if ($adjustment == 0) {
+            return null;
+        }
+        return array("invoiceid" => $invoiceId, "transaction" => $transactionId, "charged_in_mercadopago" => (float) $chargedAmount, "recorded_in_whmcs" => (float) $recordedAmount, "adjustment" => $adjustment);
+    }
     // Performs a MercadoPago API request. Returns the decoded body, or null on failure (see $lastApiError).
     function requestMercadopago($url, $accessToken, $body = null)
     {
@@ -356,6 +366,7 @@ class MercadopagoConfig
                         $usuario_id = $arr_datos_factura["userid"];
                         $balance = $arr_datos_factura["balance"];
                         if ($GATEWAY["bh_comportamiento"] != "normal") {
+                            $montoCobrado = $valorAbonado;
                             $importe_pagado = self::getAmountToRecord($valorAbonado, $balance, $moneda_de_cobro, $GATEWAY["bh_comportamiento"]);
                         } else {
                             $importe_pagado = $datosdelpago["transaction_amount"];
@@ -379,7 +390,12 @@ class MercadopagoConfig
                                 $comision = $xcomision;
                                 $conversionlog = traduccion($idioma, "mpconfig_73") . ": " . $moneda_code_usuario . "\r\n                            " . traduccion($idioma, "mpconfig_74") . ": " . $importe_pagado . "\r\n                            " . traduccion($idioma, "mpconfig_75") . ": " . $comision;
                             }
+                            $montoCobrado = $importe_pagado;
                             $importe_pagado = self::getAmountToRecord($importe_pagado, $balance, $moneda_code_usuario, "normal");
+                        }
+                        $ajuste = self::getAdjustmentLog($nrofactura, $mp_transaccion, $montoCobrado, $importe_pagado);
+                        if ($ajuste !== null) {
+                            logTransaction($GATEWAY["name"], $ajuste, "Rounding adjustment [" . $nrofactura . "]");
                         }
                         $command = "AddInvoicePayment";
                         $postData = array("gateway" => $GATEWAY["paymentmethod"], "invoiceid" => $nrofactura, "transid" => $mp_transaccion, "amount" => $importe_pagado, "fees" => $comision);
