@@ -78,6 +78,7 @@ function traduccion($idioma, $texto)
     $textos["ar"]["mpconfig_76"] = "Pendiente";
     $textos["ar"]["mpconfig_77"] = "Procesamiento de transacciones en cola";
     $textos["ar"]["mpconfig_78"] = "Para evitar transacciones duplicadas, se encolan las transacciones recibidas de MercadoPago y se procesan una a una con el System Cron de WHMCS (cada 5 minutos)";
+    $textos["ar"]["mpconfig_79"] = "No pudimos iniciar el pago con MercadoPago. Por favor intenta nuevamente en unos minutos o utiliza otro medio de pago.";
     $textos["ar"]["mercadopago_config_1"] = "Licencia de uso para los módulos de pago MercadoPago";
     $textos["ar"]["mercadopago_config_2"] = "Licencia";
     $textos["ar"]["mercadopago_config_3"] = "Verificador Local";
@@ -163,6 +164,7 @@ function traduccion($idioma, $texto)
     $textos["us"]["mpconfig_76"] = "Pending";
     $textos["us"]["mpconfig_77"] = "Queued transaction processing";
     $textos["us"]["mpconfig_78"] = "To avoid duplicated transactions, transactions received from MercadoPago are queued and processed one by one with the WHMCS System Cron (every 5 minutes)";
+    $textos["us"]["mpconfig_79"] = "We could not start the payment with MercadoPago. Please try again in a few minutes or use another payment method.";
     $textos["us"]["mercadopago_config_1"] = "Use license for MercadoPago payment modules";
     $textos["us"]["mercadopago_config_2"] = "License";
     $textos["us"]["mercadopago_config_3"] = "Local Verifier";
@@ -248,6 +250,7 @@ function traduccion($idioma, $texto)
     $textos["br"]["mpconfig_76"] = "Pendente";
     $textos["br"]["mpconfig_77"] = "Fila de processamento de transações";
     $textos["br"]["mpconfig_78"] = "Para evitar transações duplicadas, as transações recebidas do MercadoPago são enfileiradas e processadas uma a uma no Cron do Sistema WHMCS (a cada 5 minutos)";
+    $textos["br"]["mpconfig_79"] = "Não foi possível iniciar o pagamento com o MercadoPago. Tente novamente em alguns minutos ou use outro meio de pagamento.";
     $textos["br"]["mercadopago_config_1"] = "Licença de uso para módulos de pagamento do MercadoPago";
     $textos["br"]["mercadopago_config_2"] = "Licença";
     $textos["br"]["mercadopago_config_3"] = "Verificador Local";

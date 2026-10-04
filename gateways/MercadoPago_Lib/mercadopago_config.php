@@ -2,13 +2,88 @@
 use Illuminate\Database\Capsule\Manager as Capsule;
 require_once(__DIR__ . "/idioma.php");
 class MercadopagoConfig
-{ 
+{
+    // MercadoPago rejects decimal unit prices in these currencies ("unit_price must be a integer").
+    const ZERO_DECIMAL_CURRENCIES = array("CLP");
+    const HTTP_CONNECT_TIMEOUT = 10;
+    const HTTP_TIMEOUT = 20;
     public $nombreModulo;
     public $modulo;
+    public $lastApiError = "";
+    public $lastApiHttpCode = 0;
     public function __construct($nombreModulo = "mercadopago",$modulo = "mercadopago")
     {
         $this->nombreModulo = $nombreModulo;
         $this->modulo = $modulo;
+    }
+    static function isZeroDecimalCurrency($currency)
+    {
+        return in_array(strtoupper((string) $currency), self::ZERO_DECIMAL_CURRENCIES, true);
+    }
+    // Amount sent to MercadoPago as the preference unit_price.
+    static function getPreferenceAmount($amount, $currency, $mode)
+    {
+        $amount = (float) $amount;
+        switch ($mode) {
+            case "truncado":
+                return (int) $amount;
+            case "redondeado":
+                return (int) round($amount);
+        }
+        if (self::isZeroDecimalCurrency($currency)) {
+            return (int) round($amount);
+        }
+        return $amount;
+    }
+    // Amount recorded in WHMCS for an approved payment. Differences below one unit caused by
+    // rounding the preference amount settle the invoice balance exactly (no residual balance or credit).
+    static function getAmountToRecord($paidAmount, $invoiceBalance, $currency, $mode)
+    {
+        $paidAmount = (float) $paidAmount;
+        $invoiceBalance = (float) $invoiceBalance;
+        if ($mode == "noverifica") {
+            return $invoiceBalance;
+        }
+        $amountWasRounded = in_array($mode, array("truncado", "redondeado"), true) || self::isZeroDecimalCurrency($currency);
+        if ($amountWasRounded && abs($paidAmount - $invoiceBalance) < 1) {
+            return $invoiceBalance;
+        }
+        return $paidAmount;
+    }
+    // Performs a MercadoPago API request. Returns the decoded body, or null on failure (see $lastApiError).
+    function requestMercadopago($url, $accessToken, $body = null)
+    {
+        $this->lastApiError = "";
+        $this->lastApiHttpCode = 0;
+        $headers = array("Authorization: Bearer " . $accessToken);
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/4.0");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::HTTP_CONNECT_TIMEOUT);
+        curl_setopt($ch, CURLOPT_TIMEOUT, self::HTTP_TIMEOUT);
+        if ($body !== null) {
+            $json = json_encode($body);
+            $headers[] = "Content-Type: application/json";
+            $headers[] = "Content-Length: " . strlen($json);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $this->lastApiHttpCode = $httpCode;
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        if ($result === false) {
+            $this->lastApiError = "cURL error: " . $curlError;
+            return null;
+        }
+        $response = json_decode($result, true);
+        if ($httpCode < 200 || $httpCode >= 300 || !is_array($response)) {
+            $this->lastApiError = "HTTP " . $httpCode . ": " . substr((string) $result, 0, 1000);
+            return null;
+        }
+        return $response;
     }
     function crearTablaCustomTransacciones()
     {
@@ -43,8 +118,7 @@ class MercadopagoConfig
     }
     function checkIdioma()
     {
-        $resultado = Capsule::table("tbladdonmodules")->where("module", "=", "mercadopago")->where("setting", "=", "idioma")->get();
-        $resultado = $resultado[0]->value;
+        $resultado = Capsule::table("tbladdonmodules")->where("module", "=", "mercadopago")->where("setting", "=", "idioma")->value("value");
         if (empty($resultado)) {
             $resultado = "ar";
         }
@@ -56,21 +130,10 @@ class MercadopagoConfig
     }      
     function getPreferenciaPago($accesstoken, $datos_mp, $prueba = false)
     {
-        $userid = substr(strrchr($accesstoken, "-"), 1);
-        $uri = "https://api.mercadopago.com/checkout/preferences/";
+        // Optional payer fields that getLinkPago does not collect.
+        $datos_mp += array_fill_keys(array("comprador_telefono_codigodearea", "comprador_telefono_numero", "comprador_domicilio_codigopostal", "comprador_domicilio_calle", "comprador_domicilio_numero", "comprador_documento_numero", "comprador_documento_tipo"), "");
         $data = array("additional_info" => "", "auto_return" => $datos_mp["retorno"], "back_urls" => array("failure" => $datos_mp["url_fallo"], "pending" => $datos_mp["url_pendiente"], "success" => $datos_mp["url_exito"]), "binary_mode" => true, "merchant_account_id" => $datos_mp["merchant_account_id"], "processing_modes" => array($datos_mp["processing"]), "processing_mode" => $datos_mp["processing"], "external_reference" => $datos_mp["referencia"], "items" => array(array("id" => "", "currency_id" => $datos_mp["item_moneda"], "title" => $datos_mp["item_titulo"], "picture_url" => $datos_mp["item_imagen"], "description" => $datos_mp["item_descripcion"], "category_id" => "services", "quantity" => 1, "unit_price" => $datos_mp["item_precio"])), "notification_url" => $datos_mp["notification_url"], "payer" => array("phone" => array("area_code" => $datos_mp["comprador_telefono_codigodearea"], "number" => $datos_mp["comprador_telefono_numero"]), "address" => array("zip_code" => $datos_mp["comprador_domicilio_codigopostal"], "street_name" => $datos_mp["comprador_domicilio_calle"], "street_number" => $datos_mp["comprador_domicilio_numero"]), "identification" => array("number" => $datos_mp["comprador_documento_numero"], "type" => $datos_mp["comprador_documento_tipo"]), "email" => $datos_mp["comprador_email"], "name" => $datos_mp["comprador_nombre"], "surname" => $datos_mp["comprador_apellido"]), "payment_methods" => array("excluded_payment_types" => $datos_mp["exclusiones"]));
-        $url = "https://api.mercadopago.com/checkout/preferences/?access_token=" . $accesstoken;
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/4.0");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLINFO_HEADER_OUT, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: application/json", "Content-Length: " . strlen(json_encode($data))));
-        $result = curl_exec($ch);
-        curl_close($ch);
-        $response = json_decode($result, true);
-        return $response;
+        return $this->requestMercadopago("https://api.mercadopago.com/checkout/preferences", $accesstoken, $data);
     }
     function getConfigModulo()
     {
@@ -98,6 +161,7 @@ class MercadopagoConfig
         $bh_debito = $params["bh_debito"];
         $bh_prepaga = $params["bh_prepaga"];
         $bh_banco = $params["bh_banco"];
+        $mediosno = array();
         if ($bh_credit_card == "on") {
             $mediosno[] = array("id" => "credit_card");
         }
@@ -122,22 +186,7 @@ class MercadopagoConfig
         } else {
             $mododeprueba = false;
         }
-        switch ($params["bh_comportamiento"]) {
-            case "truncado":
-                $importe = (int) $params["amount"];
-                break;
-            case "redondeado":
-                $entero = (int) $params["amount"];
-                $fraccion = 0 + $params["amount"] - (int) $params["amount"];
-                if (0.49 <= $fraccion) {
-                    $entero = $entero + 1;
-                }
-                $importe = $entero;
-                break;
-            default:
-                $importe = floatval($params["amount"]);
-                break;
-        }
+        $importe = self::getPreferenceAmount($params["amount"], $params["currency"], $params["bh_comportamiento"]);
         $datos_mp["item_precio"] = $importe;
         $accesstoken = $params["bh_Access_Token"];
         $datos_mp["retorno"] = "all";
@@ -157,8 +206,8 @@ class MercadopagoConfig
         $datos_mp["merchant_account_id"] = $params["merchant_account_id"];
         $datos_mp["processing"] = $params["processing"];
         $datos_mp["url_exito"] = $bh_success;
-        $datos_mp["url_fallo"] = $bh_pending;
-        $datos_mp["url_pendiente"] = $bh_failure;
+        $datos_mp["url_fallo"] = $bh_failure;
+        $datos_mp["url_pendiente"] = $bh_pending;
         $datos_mp["notification_url"] = $systemurl . "modules/gateways/callback/" . $params["paymentmethod"] . "_ipn.php?source_news=webhooks";
         $datos_mp["referencia"] = $params["invoiceid"];
         $datos_mp["item_titulo"] = $companyname . " - " . $params["bh_titulo"] . " Nro. " . $params["invoiceid"];
@@ -172,16 +221,20 @@ class MercadopagoConfig
             $code = "Datos inválidos de Mercadopago";
         } else {
             $respuesta = $this->getPreferenciaPago($accesstoken, $datos_mp, $mododeprueba);
+            $enlace = "";
+            if (is_array($respuesta)) {
+                $enlace = $mododeprueba ? ($respuesta["sandbox_init_point"] ?? "") : ($respuesta["init_point"] ?? "");
+            }
             if ($params["bh_error_mp"] == "on") {
-                $code = "Respuesta Mercadopago<br><br><pre>" . print_r($respuesta, true) . "</pre>";
+                $detalle = is_array($respuesta) ? print_r($respuesta, true) : $this->lastApiError;
+                $code = "Respuesta Mercadopago<br><br><pre>" . htmlspecialchars($detalle) . "</pre>";
+            } elseif (empty($enlace)) {
+                $error = $this->lastApiError ?: "Response without init_point: " . substr(json_encode($respuesta), 0, 1000);
+                logTransaction($params["name"], array("invoiceid" => $params["invoiceid"], "amount" => $params["amount"], "unit_price" => $importe, "currency" => $params["currency"], "error" => $error), "Preference creation failed");
+                $code = "<div class='alert alert-warning'>" . traduccion($this->checkIdioma(), "mpconfig_79") . "</div>";
             } else {
-                if ($mododeprueba) {
-                    $enlace = $respuesta["sandbox_init_point"];
-                } else {
-                    $enlace = $respuesta["init_point"];
-                }
                 $logo = $this->getMPLogo();
-                $code = "<script src='https://www.mercadopago.com/v2/security.js' view='item'></script>" . $logo . "<br><a href='" . $enlace . "' class='btn btn-" . $color . "'>" . $bh_texto . "</a>" . $nota;
+                $code = "<script src='https://www.mercadopago.com/v2/security.js' view='item'></script>" . $logo . "<br><a href='" . htmlspecialchars($enlace, ENT_QUOTES) . "' class='btn btn-" . $color . "'>" . $bh_texto . "</a>" . $nota;
             }
         }
         return $code;
@@ -190,12 +243,14 @@ class MercadopagoConfig
     {
         $gatewayModule = $this->modulo;
         $informe = json_decode(file_get_contents("php://input"), true);
-        $informe_cobro = $informe["data"]["id"];
-        $informe_action = $informe["action"];
-        $informe_id = $informe["id"];
-        $informe_type = $informe["type"];
+        $informe_cobro = $informe["data"]["id"] ?? "";
+        $informe_action = $informe["action"] ?? "";
+        $informe_id = $informe["id"] ?? "";
+        $informe_type = $informe["type"] ?? "";
         $email = $gatewayOBJ["email"];
         $modoProcesamientoPorColas = $gatewayOBJ["bh_modocolaprocesamiento"] == "on";
+        $adminUsername = "";
+        $verificamail = false;
         $admin = $gatewayOBJ["useradmin"];
         if (!empty($admin)) {
             $adminUsername = $gatewayOBJ["useradmin"];
@@ -210,47 +265,45 @@ class MercadopagoConfig
         if ($verificamail) {
             mail($email, $informe_id . " - Start", print_r($informe, true));
         }
+        if (empty($informe_cobro)) {
+            // Not a payment notification: nothing to process.
+            return "200";
+        }
         $command = "GetTransactions";
         $postData = array("transid" => $informe_cobro);
         $arr_transacciones = localAPI($command, $postData, $adminUsername);
-        if ($arr_transacciones["totalresults"] == 0) {
+        $yaEncolada = Capsule::table("bapp_mercadopago")->where("transaccion", "=", $informe_cobro)->exists();
+        if ($arr_transacciones["totalresults"] == 0 && !$yaEncolada) {
             Capsule::table("bapp_mercadopago")->insert(array("transaccion" => $informe_cobro, "momento" => date("Y-m-d H:i:s"), "gateway" => $gatewayModule));
         }
         if (!$modoProcesamientoPorColas)
         {
-            $this->callbackMercadopago($informe_cobro);
+            if (!$this->callbackMercadopago($informe_cobro)) {
+                // The payment could not be fetched; a non-2xx status makes MercadoPago retry the notification.
+                return "500 Internal Server Error";
+            }
         }        
         $retorno = "200";
         return $retorno;
     }
     function getPaymentMercadopago($transaccion,$accessToken)
     {        
-        $url = "https://api.mercadopago.com/v1/payments/" . $transaccion;
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/4.0");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLINFO_HEADER_OUT, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Authorization: Bearer " . $accessToken));
-        $result = curl_exec($ch);
-        curl_close($ch);
-        $respuestaParseada = json_decode($result, true);
-        return $respuestaParseada;
+        return $this->requestMercadopago("https://api.mercadopago.com/v1/payments/" . rawurlencode($transaccion), $accessToken);
     }
     function callbackMercadopago($idtrans = "")
     {
         if (!empty($idtrans)) {
-            $resultado = Capsule::table("bapp_mercadopago")->where("transaccion", "=", $idtrans)->get();
-            $mp_id = $resultado[0]->id;
-            $mp_transaccion = $resultado[0]->transaccion;
-            $mp_momento = $resultado[0]->momento;
-            $mp_gateway = $resultado[0]->gateway;
+            $resultado = Capsule::table("bapp_mercadopago")->where("transaccion", "=", $idtrans)->first();
         } else {
             $resultado = Capsule::table("bapp_mercadopago")->first();
-            $mp_id = $resultado->id;
-            $mp_transaccion = $resultado->transaccion;
-            $mp_momento = $resultado->momento;
-            $mp_gateway = $resultado->gateway;
         }
+        $mp_id = $resultado->id ?? null;
+        $mp_transaccion = $resultado->transaccion ?? null;
+        $mp_momento = $resultado->momento ?? null;
+        $mp_gateway = $resultado->gateway ?? null;
+        $adminUsername = "";
+        $verificamail = false;
+        $conversionlog = "";
         if (!empty($mp_id)) {
             $log = "ID: " . $mp_id . "<br>Tran: " . $mp_transaccion . "<br>Time: " . $mp_momento . "<br>Gat: " . $mp_gateway;
             $GATEWAY = getGatewayVariables($mp_gateway);
@@ -277,6 +330,17 @@ class MercadopagoConfig
                 if ($verificamail) {
                     mail($email, "Search Trans. " . $mp_transaccion, print_r($datosdelpago, true));
                 }
+                if (empty($datosdelpago["status"])) {
+                    logTransaction($GATEWAY["name"], array("transaction" => $mp_transaccion, "error" => $this->lastApiError), "Payment lookup failed");
+                    $httpCode = $this->lastApiHttpCode;
+                    if ($httpCode >= 400 && $httpCode < 500 && $httpCode != 429) {
+                        // Permanent error (e.g. unknown payment): drop it so it does not block the queue.
+                        Capsule::table("bapp_mercadopago")->where("id", "=", $mp_id)->delete();
+                        return true;
+                    }
+                    // Transient error: keep the queue row so the payment is retried instead of being dropped.
+                    return false;
+                }
                 $status = $datosdelpago["status"];
                 $idioma = $this->checkIdioma();
                 if ($status == "approved") {
@@ -292,7 +356,7 @@ class MercadopagoConfig
                         $usuario_id = $arr_datos_factura["userid"];
                         $balance = $arr_datos_factura["balance"];
                         if ($GATEWAY["bh_comportamiento"] != "normal") {
-                            $importe_pagado = $balance;
+                            $importe_pagado = self::getAmountToRecord($valorAbonado, $balance, $moneda_de_cobro, $GATEWAY["bh_comportamiento"]);
                         } else {
                             $importe_pagado = $datosdelpago["transaction_amount"];
                             $command = "GetClientsDetails";
@@ -315,6 +379,7 @@ class MercadopagoConfig
                                 $comision = $xcomision;
                                 $conversionlog = traduccion($idioma, "mpconfig_73") . ": " . $moneda_code_usuario . "\r\n                            " . traduccion($idioma, "mpconfig_74") . ": " . $importe_pagado . "\r\n                            " . traduccion($idioma, "mpconfig_75") . ": " . $comision;
                             }
+                            $importe_pagado = self::getAmountToRecord($importe_pagado, $balance, $moneda_code_usuario, "normal");
                         }
                         $command = "AddInvoicePayment";
                         $postData = array("gateway" => $GATEWAY["paymentmethod"], "invoiceid" => $nrofactura, "transid" => $mp_transaccion, "amount" => $importe_pagado, "fees" => $comision);
