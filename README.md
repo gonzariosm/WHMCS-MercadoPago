@@ -11,6 +11,51 @@ Módulo de gateway de pago de WHMCS para integrar Mercado Pago
 ![GitHub stars](https://img.shields.io/github/stars/fedealvz/WHMCS-MercadoPago?style=social)
 ![GitHub watchers](https://img.shields.io/github/watchers/fedealvz/WHMCS-MercadoPago?style=social)
 
+## Fork notes (SilverHost)
+
+This fork tracks `fedealvz/WHMCS-MercadoPago` `main` and adds fixes needed for Chilean pesos (CLP)
+and for reliability. Addon version: `17.3-silverhost.1`.
+
+### Changes
+
+- **Zero-decimal currencies (CLP):** the preference `unit_price` is always sent as a rounded integer.
+  MercadoPago rejects decimal CLP amounts (`unit_price must be a integer`), which made prorated
+  upgrade invoices (e.g. `27296.67`) unpayable. The list lives in `MercadopagoConfig::ZERO_DECIMAL_CURRENCIES`.
+- **Payment reconciliation:** when the amount was rounded (zero-decimal currency, or the `truncado` /
+  `redondeado` modes) and the paid amount is within one unit of the invoice balance, the exact balance is
+  recorded so the invoice is marked Paid without a residual balance or credit. Larger differences are
+  recorded as actually paid (previously `truncado` / `redondeado` accepted any underpayment).
+- **`redondeado` mode** uses standard rounding instead of a `0.49` threshold.
+- **Error handling:** if MercadoPago does not return an `init_point`, the error is written to the
+  gateway log and the client sees a message instead of a dead payment button.
+- **HTTP:** the access token is sent as an `Authorization: Bearer` header (no longer in the URL), with
+  10s connect / 20s total timeouts.
+- **Webhook:** non-payment notifications are ignored, duplicate notifications no longer try to queue
+  the same payment twice, and a transient failure fetching the payment returns HTTP 500 so MercadoPago
+  retries (permanent 4xx errors are logged and dropped).
+- **Fixes:** failure/pending return URLs were swapped; PHP 8 undefined variable/key warnings;
+  `Mostrar errores de MercadoPago` output is HTML-escaped.
+- Only one gateway instance is kept: `mercadopago_1` (the `mercadopago_2..9` copies were removed).
+
+### Tests
+
+The tests run in a PHP 8.3 container and need no WHMCS install (WHMCS functions are stubbed and the
+MercadoPago API is mocked):
+
+```sh
+tests/run.sh
+```
+
+### Deployment
+
+Copy `gateways/*` to `<whmcs>/modules/gateways/` and `addons/mercadopago/*` to
+`<whmcs>/modules/addons/mercadopago/`. Back up the existing files first. When upgrading an install that
+has the `mercadopago_2..9` gateways but does not use them, delete those files from
+`modules/gateways/` and `modules/gateways/callback/`.
+
+The `AfterCronJob` queue processing (`procesarTodosRegistrosCallback`) is registered by the
+`mercadopago` addon, so it only runs while that addon is activated.
+
 ## Características
 
 - Soporte para múltiples cuentas de Mercado Pago en diferentes países
