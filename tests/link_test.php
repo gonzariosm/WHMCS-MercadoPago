@@ -87,6 +87,18 @@ namespace {
         check("CLP " . $amount . " sends an integer unit_price", is_int($obj->lastBody["items"][0]["unit_price"]));
     }
 
+    // The button is one Mercado Pago-branded link: the MP mark and the configured label, no loose logo.
+    $obj = new MockedMercadopagoConfig();
+    $params = invoiceParams("1000");
+    $params["bh_texto"] = "Pagar <b>ya</b>";
+    $html = $obj->getLinkPago($params);
+    check("button is a single mp-pay-btn link", substr_count($html, "<a ") === 1 && strpos($html, "class='btn mp-pay-btn'") !== false, $html);
+    check("button includes the Mercado Pago mark", preg_match("~<a [^>]*mp-pay-btn[^>]*><svg [^>]*aria-hidden='true'~", $html) === 1, $html);
+    check("button shows the configured label", strpos($html, "<span>Pagar <b>ya</b></span></a>") !== false, $html);
+    check("button aria-label names Mercado Pago without markup", strpos($html, "aria-label='Pagar ya con Mercado Pago'") !== false, $html);
+    check("loose base64 logo is no longer rendered", strpos($html, "data:image/png;base64") === false);
+    check("button styles are scoped to mp-pay-btn", strpos($html, "<style>a.mp-pay-btn{") !== false);
+
     // Return URLs are no longer swapped.
     $obj = new MockedMercadopagoConfig();
     $obj->getLinkPago(invoiceParams("1000"));

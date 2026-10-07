@@ -37,6 +37,10 @@ and for reliability. Addon version: `17.3-silverhost.1`.
   retries (permanent 4xx errors are logged and dropped).
 - **Fixes:** failure/pending return URLs were swapped; PHP 8 undefined variable/key warnings;
   `Mostrar errores de MercadoPago` output is HTML-escaped.
+- **Payment button:** one Mercado Pago-blue button with the Mercado Pago mark (inline SVG) next to the
+  configured label (`bh_texto`), instead of a loose base64 logo above a `btn-<color>` button. Its styles
+  ship with the output, scoped to `a.mp-pay-btn` and `!important`, so client themes don't repaint it.
+  The "button colour" setting no longer has an effect.
 - Only one gateway instance is kept: `mercadopago_1` (the `mercadopago_2..9` copies were removed).
 
 ### Tests
